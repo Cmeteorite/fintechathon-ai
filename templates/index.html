@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>AI 银行智能体</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; padding-top: 50px; }
+        .chat-container { width: 400px; background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); overflow: hidden; display: flex; flex-direction: column; height: 600px; }
+        .header { background: #1a73e8; color: white; padding: 15px; text-align: center; font-weight: bold; }
+        .chat-area { flex: 1; padding: 15px; overflow-y: auto; background: #f9f9f9; display: flex; flex-direction: column; gap: 10px; }
+        .message { max-width: 80%; padding: 10px 15px; border-radius: 15px; font-size: 14px; line-height: 1.4; }
+        .user-msg { align-self: flex-end; background: #1a73e8; color: white; border-bottom-right-radius: 2px; }
+        .bot-msg { align-self: flex-start; background: #e4e6eb; color: black; border-bottom-left-radius: 2px; }
+        .card { background: white; border: 1px solid #ddd; padding: 12px; border-radius: 8px; margin-top: 5px; font-size: 13px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .badge { padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+        .badge-green { background: #e6f4ea; color: #1e8e3e; }
+        .badge-red { background: #fce8e6; color: #d93025; }
+        .input-area { padding: 15px; background: white; border-top: 1px solid #ddd; display: flex; gap: 10px; }
+        .input-area input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 20px; outline: none; }
+        .input-area button { background: #1a73e8; color: white; border: none; padding: 10px 15px; border-radius: 20px; cursor: pointer; }
+        .mfa-modal { display: none; background: #fff; border: 2px solid #d93025; padding: 15px; border-radius: 8px; margin-top: 10px; }
+        .mfa-btn { background: #d93025; color: white; border: none; padding: 8px; width: 100%; border-radius: 4px; margin-top: 10px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="chat-container">
+    <div class="header"> AI 银行助手</div>
+    <div class="chat-area" id="chat-area">
+        <div class="message bot-msg">你好！我是你的 AI 银行助手。你可以对我说：“查一下我上个月在餐饮花了多少钱” 或 “给张三转 200 块”。</div>
+    </div>
+    <div class="input-area">
+        <input type="text" id="user-input" placeholder="输入您的需求..." onkeypress="handleEnter(event)">
+        <button onclick="sendMessage()">发送</button>
+    </div>
+</div>
+
+<script>
+    function handleEnter(e) {
+        if (e.key === 'Enter') sendMessage();
+    }
+
+    async function sendMessage() {
+        const input = document.getElementById('user-input');
+        const text = input.value.trim();
+        if (!text) return;
+
+        const chatArea = document.getElementById('chat-area');
+        
+        // 1. Show User Message
+        chatArea.innerHTML += `<div class="message user-msg">${text}</div>`;
+        input.value = '';
+        chatArea.scrollTop = chatArea.scrollHeight;
+
+        // 2. Fake LLM parsing (In the real project, 刘家言's orchestrator does this)
+        if (text.includes('账单') || text.includes('花了')) {
+            // Fetch real data from our backend!
+            const response = await fetch('/api/transactions?category=餐饮');
+            const result = await response.json();
+            
+            let total = result.data.transactions.reduce((sum, t) => sum + t.amount, 0);
+
+            chatArea.innerHTML += `
+                <div class="message bot-msg">
+                    <span class="badge badge-green">绿色通道 · 自动执行</span><br>
+                    您本月的餐饮消费共计 <b>¥${total.toFixed(2)}</b>。
+                    <div class="card">
+                        <b>数据来源：</b>core/tools.py<br>
+                        <b>状态：</b>${result.status}
+                    </div>
+                </div>
+            `;
+        } else if (text.includes('转') || text.includes('汇')) {
+            // Trigger the Transfer UI
+            showYellowTier(chatArea, text);
+        }
+        chatArea.scrollTop = chatArea.scrollHeight;
+    }
+
+    function showYellowTier(chatArea, text) {
+        chatArea.innerHTML += `
+            <div class="message bot-msg">
+                <span class="badge badge-green">黄色通道 · 需确认</span><br>
+                准备为您执行转账。
+                <div class="card">
+                    <b>用户意图：</b>${text}<br><br>
+                    <button style="padding:5px; width:100%;" onclick="executeRealTransfer()">点击确认转账 ¥200</button>
+                </div>
+            </div>
+        `;
+    }
+
+    async function executeRealTransfer() {
+        const chatArea = document.getElementById('chat-area');
+        
+        // Actually hit the Flask API
+        const response = await fetch('/api/transfer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ amount: 200, recipient: "张三" })
+        });
+        const result = await response.json();
+
+        chatArea.innerHTML += `
+            <div class="message bot-msg">
+                <span class="badge badge-green">转账成功</span><br>
+                已向张三转账 ¥200。
+                <div class="card">
+                    <b>交易单号：</b>${result.txn_id}<br>
+                    <b>剩余余额：</b>¥${result.data.new_balance}
+                </div>
+            </div>
+        `;
+        chatArea.scrollTop = chatArea.scrollHeight;
+    }
+</script>
+</body>
+</html>
