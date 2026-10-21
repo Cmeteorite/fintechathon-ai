@@ -4,7 +4,7 @@ Register in app.py with two lines:
     from core.routes_angel import bp as angel_bp
     app.register_blueprint(angel_bp)
 """
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, render_template, request
 
 from core import cards, transfer
 from core import security as sec
@@ -15,6 +15,12 @@ bp = Blueprint("angel", __name__)
 def _body():
     data = request.get_json(silent=True)
     return data if isinstance(data, dict) else {}
+
+
+# ---------------- test panel (buttons instead of curl) ----------------
+@bp.route("/angel")
+def angel_page():
+    return render_template("angel.html")
 
 
 # ---------------- smart transfer ----------------

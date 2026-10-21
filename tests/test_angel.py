@@ -340,6 +340,11 @@ class TestHTTP(Base):
             self.assertEqual(resp.status_code, 200, url)
             self.assertIn(resp.get_json()["status"], ("success", "failed"))
 
+    def test_test_panel_page_is_served(self):
+        resp = self.client.get("/angel")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("卡片管理", resp.get_data(as_text=True))
+
     def test_get_endpoints(self):
         for url in ("/api/contacts/search?q=王芳", "/api/cards", "/api/pending", "/api/audit",
                     "/api/transfer/scheduled"):

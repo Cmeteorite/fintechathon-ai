@@ -5,29 +5,46 @@
     <title>AI 银行智能体</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; padding-top: 50px; }
-        .chat-container { width: 400px; background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); overflow: hidden; display: flex; flex-direction: column; height: 600px; }
-        .header { background: #1a73e8; color: white; padding: 15px; text-align: center; font-weight: bold; }
+        .chat-container { width: 460px; background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); overflow: hidden; display: flex; flex-direction: column; height: 640px; }
+        .header { background: #1a73e8; color: white; padding: 15px; text-align: center; font-weight: bold; position: relative; }
+        .header a { position: absolute; right: 14px; top: 17px; font-size: 12px; font-weight: normal; color: #dbe8ff; text-decoration: underline; }
         .chat-area { flex: 1; padding: 15px; overflow-y: auto; background: #f9f9f9; display: flex; flex-direction: column; gap: 10px; }
-        .message { max-width: 80%; padding: 10px 15px; border-radius: 15px; font-size: 14px; line-height: 1.4; }
+        .message { max-width: 88%; padding: 10px 15px; border-radius: 15px; font-size: 14px; line-height: 1.4; word-break: break-word; }
         .user-msg { align-self: flex-end; background: #1a73e8; color: white; border-bottom-right-radius: 2px; }
         .bot-msg { align-self: flex-start; background: #e4e6eb; color: black; border-bottom-left-radius: 2px; }
         .card { background: white; border: 1px solid #ddd; padding: 12px; border-radius: 8px; margin-top: 5px; font-size: 13px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         .badge { padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; }
         .badge-green { background: #e6f4ea; color: #1e8e3e; }
+        .badge-yellow { background: #fef7e0; color: #b06000; }
         .badge-red { background: #fce8e6; color: #d93025; }
         .input-area { padding: 15px; background: white; border-top: 1px solid #ddd; display: flex; gap: 10px; }
         .input-area input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 20px; outline: none; }
         .input-area button { background: #1a73e8; color: white; border: none; padding: 10px 15px; border-radius: 20px; cursor: pointer; }
-        .mfa-modal { display: none; background: #fff; border: 2px solid #d93025; padding: 15px; border-radius: 8px; margin-top: 10px; }
-        .mfa-btn { background: #d93025; color: white; border: none; padding: 8px; width: 100%; border-radius: 4px; margin-top: 10px; cursor: pointer; }
+        .btn-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+        .btn-primary, .btn-ghost, .btn-pick { border: none; border-radius: 6px; padding: 7px 12px; cursor: pointer; font-size: 13px; }
+        .btn-primary { background: #1a73e8; color: white; flex: 1; }
+        .btn-ghost { background: #eef1f7; color: #333; }
+        .btn-pick { background: #e8f0fe; color: #1a56c4; }
+        .code-input { width: 100%; box-sizing: border-box; margin-top: 8px; padding: 8px; border: 2px solid #d93025; border-radius: 6px; }
+        .small { color: #666; font-size: 12px; }
+        table.shares { border-collapse: collapse; margin-top: 6px; }
+        table.shares td { padding: 2px 12px 2px 0; }
     </style>
 </head>
 <body>
 
 <div class="chat-container">
-    <div class="header"> AI 银行助手</div>
+    <div class="header"> AI 银行助手 <a href="/angel" target="_blank">测试面板</a></div>
     <div class="chat-area" id="chat-area">
-        <div class="message bot-msg">你好！我是你的 AI 银行助手。你可以对我说：“查一下我上个月在餐饮花了多少钱” 或 “给张三转 200 块”。</div>
+        <div class="message bot-msg">你好！我是你的 AI 银行助手。你可以对我说：
+            <div class="small" style="margin-top:6px">
+                “查一下我上个月在餐饮花了多少钱”<br>
+                “给李明转 200 块” · “转账 2000 给王芳”<br>
+                “AA 100 李明 王芳”<br>
+                “查看我的卡” · “挂失我的卡” · “把额度调到 3000”<br>
+                “限制境外交易” · “申请一张虚拟卡”
+            </div>
+        </div>
     </div>
     <div class="input-area">
         <input type="text" id="user-input" placeholder="输入您的需求..." onkeypress="handleEnter(event)">
@@ -36,82 +53,228 @@
 </div>
 
 <script>
-    function handleEnter(e) {
-        if (e.key === 'Enter') sendMessage();
+    /* ------------------------------------------------------------------
+       NOTE FOR THE TEAM
+       parseIntent() below is a RULE-BASED stand-in for the real LLM agent.
+       The real agent should pick a tool from core/tools.py -> AGENT_TOOLS.
+       SECURITY: the agent may only *request* actions. Money/card changes
+       happen only when the user presses the 确认 button, which calls
+       /api/confirm (with the verification code for red-tier actions).
+       Typing "确认" in the chat deliberately does NOTHING.
+       ------------------------------------------------------------------ */
+    const chatArea = document.getElementById('chat-area');
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const scrollDown = () => { chatArea.scrollTop = chatArea.scrollHeight; };
+    const addUser = t => { chatArea.insertAdjacentHTML('beforeend', `<div class="message user-msg">${esc(t)}</div>`); scrollDown(); };
+    const addBot = html => { chatArea.insertAdjacentHTML('beforeend', `<div class="message bot-msg">${html}</div>`); scrollDown(); };
+
+    async function api(method, url, body) {
+        try {
+            const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' },
+                                         body: body === undefined ? undefined : JSON.stringify(body) });
+            return await r.json();
+        } catch (e) {
+            return { status: 'failed', data: {}, txn_id: null, error: '无法连接服务器' };
+        }
     }
+
+    function handleEnter(e) { if (e.key === 'Enter') sendMessage(); }
 
     async function sendMessage() {
         const input = document.getElementById('user-input');
         const text = input.value.trim();
         if (!text) return;
-
-        const chatArea = document.getElementById('chat-area');
-        
-        // 1. Show User Message
-        chatArea.innerHTML += `<div class="message user-msg">${text}</div>`;
+        addUser(text);
         input.value = '';
-        chatArea.scrollTop = chatArea.scrollHeight;
+        await handleText(text);
+    }
 
-        // 2. Fake LLM parsing (In the real project, 刘家言's orchestrator does this)
-        if (text.includes('账单') || text.includes('花了')) {
-            // Fetch real data from our backend!
-            const response = await fetch('/api/transactions?category=餐饮');
-            const result = await response.json();
-            
-            let total = result.data.transactions.reduce((sum, t) => sum + t.amount, 0);
+    /* ---------------------------- intent parsing ---------------------------- */
+    const RESTR = [[/境外|海外/, 'overseas', '境外交易'], [/网上|线上/, 'online', '网上支付'], [/取现|ATM|atm/, 'atm', 'ATM 取现']];
 
-            chatArea.innerHTML += `
-                <div class="message bot-msg">
-                    <span class="badge badge-green">绿色通道 · 自动执行</span><br>
-                    您本月的餐饮消费共计 <b>¥${total.toFixed(2)}</b>。
-                    <div class="card">
-                        <b>数据来源：</b>core/tools.py<br>
-                        <b>状态：</b>${result.status}
-                    </div>
-                </div>
-            `;
-        } else if (text.includes('转') || text.includes('汇')) {
-            // Trigger the Transfer UI
-            showYellowTier(chatArea, text);
+    function firstNumber(t) { const m = t.match(/(\d+(?:\.\d+)?)/); return m ? m[1] : null; }
+
+    function parseTransfer(t) {
+        const amount = firstNumber(t);
+        let m = t.match(/(?:给|向|转给|汇给)\s*([^\d\s转汇，,。]{1,8}?)\s*(?:转|汇|\d)/)
+             || t.match(/(?:转|汇)(?:账)?\s*\d+(?:\.\d+)?\s*(?:块钱|块|元)?\s*(?:给|到)\s*([^\d\s，,。]{1,8})/)
+             || t.match(/(?:转|汇)(?:账)?(?:给|到)\s*([^\d\s，,。]{1,8})/);
+        return { recipient: m ? m[1] : null, amount };
+    }
+
+    async function handleText(text) {
+        if (/^(确认|好的|好|是的|是|ok|yes|y|同意|没问题)[!！。.\s]*$/i.test(text)) {
+            return addBot('出于安全考虑，转账和卡片操作只能通过卡片上的 <b>「确认」按钮</b> 完成，在聊天里输入“确认”不会执行任何操作。');
         }
-        chatArea.scrollTop = chatArea.scrollHeight;
+        // cards: unfreeze must be tested before lost ("解除挂失" contains "挂失")
+        if (/解挂|解除挂失|取消挂失/.test(text)) return cardIntent({ type: 'unfreeze' }, text, c => c.status === 'frozen');
+        if (/挂失|冻结.*卡|卡.*丢/.test(text)) return cardIntent({ type: 'lost' }, text, c => c.status === 'active');
+        if (/申请.*卡|办.*卡/.test(text)) return createCard(/实体|物理/.test(text) ? 'physical' : 'virtual');
+        const restr = RESTR.find(r => r[0].test(text));
+        if (restr && /限制|禁止|关闭|解除|解锁|取消|开启|允许|开放/.test(text)) {
+            const unlock = /解除|解锁|取消|开启|允许|开放/.test(text);
+            return cardIntent({ type: 'restriction', restriction: restr[1], enabled: !unlock, label: restr[2] }, text, c => c.status === 'active');
+        }
+        if (/额度|限额/.test(text) && !/转/.test(text)) {
+            const n = firstNumber(text.replace(/C\d{3}/ig, '').replace(/尾号\s*\d{4}/g, ''));
+            if (!n) return addBot('请告诉我新的额度，例如：“把额度调到 3000”。');
+            return cardIntent({ type: 'limit', new_limit: n }, text, c => c.status === 'active');
+        }
+        if (/我的卡|查看.*卡|卡片|银行卡/.test(text)) return listCards();
+        // transfers
+        if (/每(天|周|月)|定时|明天|下个月|下周/.test(text)) {
+            return addBot('定时转账需要选择具体日期，请到 <a href="/angel" target="_blank">测试面板</a> 的「定时转账」里设置。');
+        }
+        if (/AA|均摊|平分|分摊/i.test(text)) return splitIntent(text);
+        if (/转|汇/.test(text)) return transferIntent(text);
+        if (/余额/.test(text)) return showBalance();
+        if (/账单|花了|消费/.test(text)) return showBills();
+        addBot('抱歉，我还不太明白。你可以试试：“给李明转 200 块”、“查看我的卡”、“挂失我的卡”。');
     }
 
-    function showYellowTier(chatArea, text) {
-        chatArea.innerHTML += `
-            <div class="message bot-msg">
-                <span class="badge badge-green">黄色通道 · 需确认</span><br>
-                准备为您执行转账。
-                <div class="card">
-                    <b>用户意图：</b>${text}<br><br>
-                    <button style="padding:5px; width:100%;" onclick="executeRealTransfer()">点击确认转账 ¥200</button>
-                </div>
-            </div>
-        `;
+    /* ----------------------------- read-only (green) ----------------------------- */
+    async function showBills() {
+        const result = await api('GET', '/api/transactions?category=餐饮');
+        const total = (result.data.transactions || []).reduce((s, t) => s + t.amount, 0);
+        addBot(`<span class="badge badge-green">绿色通道 · 自动执行</span><br>
+            您本月的餐饮消费共计 <b>¥${total.toFixed(2)}</b>。
+            <div class="card"><b>数据来源：</b>core/tools.py<br><b>状态：</b>${esc(result.status)}</div>`);
     }
 
-    async function executeRealTransfer() {
-        const chatArea = document.getElementById('chat-area');
-        
-        // Actually hit the Flask API
-        const response = await fetch('/api/transfer', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ amount: 200, recipient: "张三" })
-        });
-        const result = await response.json();
+    async function showBalance() {
+        const r = await api('GET', '/api/balance');
+        addBot(`<span class="badge badge-green">绿色通道 · 自动执行</span><br>您的账户余额为 <b>¥${Number(r.data.balance).toFixed(2)}</b>。`);
+    }
 
-        chatArea.innerHTML += `
-            <div class="message bot-msg">
-                <span class="badge badge-green">转账成功</span><br>
-                已向张三转账 ¥200。
-                <div class="card">
-                    <b>交易单号：</b>${result.txn_id}<br>
-                    <b>剩余余额：</b>¥${result.data.new_balance}
+    async function listCards() {
+        const r = await api('GET', '/api/cards');
+        const stText = { active: '正常', frozen: '已挂失', pending_delivery: '待寄送' };
+        const names = { online: '网上支付', overseas: '境外交易', atm: 'ATM 取现' };
+        addBot(`<span class="badge badge-green">绿色通道 · 自动执行</span><br>您有 ${r.data.cards.length} 张卡：` +
+            r.data.cards.map(c => `<div class="card"><b>${esc(c.card_id)}</b> 尾号 ${esc(c.last4)} · ${esc(stText[c.status] || c.status)}<br>
+                每日额度 ¥${esc(c.daily_limit)}<br>
+                <span class="small">已限制：${Object.keys(c.restrictions).filter(k => c.restrictions[k]).map(k => names[k]).join('、') || '无'}</span></div>`).join(''));
+    }
+
+    /* ----------------------------- pending actions ----------------------------- */
+    function showPending(res) {
+        const d = res.data, strong = d.level === 'strong', id = esc(d.pending_id);
+        addBot(`<span class="badge ${strong ? 'badge-red' : 'badge-yellow'}">${strong ? '红色通道 · 需验证码' : '黄色通道 · 需确认'}</span><br>请核对以下操作：
+            <div class="card" id="pend-${id}">
+                ${esc(d.summary)}
+                ${strong ? `<input class="code-input" id="code-${id}" placeholder="请输入验证码（演示：123456）">` : ''}
+                <div class="btn-row" id="btns-${id}">
+                    <button class="btn-primary" onclick="confirmPending('${id}', ${strong})">确认</button>
+                    <button class="btn-ghost" onclick="cancelPending('${id}')">取消</button>
                 </div>
-            </div>
-        `;
-        chatArea.scrollTop = chatArea.scrollHeight;
+            </div>`);
+    }
+
+    function pickDone(btn) { const row = btn.parentElement; row.outerHTML = `<div class="small" style="margin-top:8px">已选择：${esc(btn.textContent)}</div>`; }
+
+    function closePending(id, html) { const row = document.getElementById('btns-' + id); if (row) row.outerHTML = `<div class="small" style="margin-top:8px">${html}</div>`; }
+
+    async function confirmPending(id, strong) {
+        const code = strong ? (document.getElementById('code-' + id).value || '') : undefined;
+        const res = await api('POST', '/api/confirm', { pending_id: id, code });
+        if (res.status === 'success') {
+            closePending(id, '✅ 已确认');
+            addBot(`<span class="badge badge-green">操作成功</span><br>${describeResult(res)}`);
+        } else {
+            const left = res.data && res.data.remaining_attempts !== undefined ? `（还可尝试 ${res.data.remaining_attempts} 次）` : '';
+            addBot(`<span class="badge badge-red">未完成</span><br>${esc(res.error)}${left}`);
+            if (/锁定|已处于|找不到|已超过|不是|无法/.test(res.error || '')) closePending(id, '❌ 该操作已失效，请重新发起');
+        }
+    }
+
+    async function cancelPending(id) {
+        const res = await api('POST', '/api/cancel', { pending_id: id });
+        closePending(id, res.status === 'success' ? '已取消' : esc(res.error));
+        if (res.status === 'success') addBot('好的，已取消，没有任何改动。');
+    }
+
+    function describeResult(res) {
+        const d = res.data || {};
+        const parts = [];
+        if (d.new_balance !== undefined) parts.push(`已向 <b>${esc(d.recipient)}</b> 转账 ¥${Number(d.amount).toFixed(2)}，剩余余额 <b>¥${Number(d.new_balance).toFixed(2)}</b>。`);
+        else if (d.schedule_id) parts.push(`已创建定时转账 ${esc(d.schedule_id)}，下次执行：${esc(String(d.next_run).replace('T', ' '))}。`);
+        else if (d.card) parts.push(`新卡已创建：${esc(d.card.card_id)}（尾号 ${esc(d.card.last4)}），状态：${d.card.status === 'active' ? '正常' : d.card.status === 'pending_delivery' ? '待寄送' : esc(d.card.status)}，每日额度 ¥${esc(d.card.daily_limit)}。`);
+        else if (d.new_limit !== undefined) parts.push(`${esc(d.card_id)} 的每日额度已从 ¥${esc(d.old_limit)} 调整为 <b>¥${esc(d.new_limit)}</b>。`);
+        else if (d.restrictions) parts.push(`${esc(d.card_id)} 的交易限制已更新。`);
+        else if (d.status && d.card_id) parts.push(`${esc(d.card_id)} 现在的状态：<b>${d.status === 'frozen' ? '已挂失' : '正常'}</b>。`);
+        else parts.push('操作已完成。');
+        if (res.txn_id) parts.push(`<div class="card"><b>单号：</b>${esc(res.txn_id)}</div>`);
+        return parts.join('');
+    }
+
+    function showFailure(res, retry) {
+        let extra = '';
+        if (res.data && res.data.candidates) {
+            extra = '<div class="btn-row">' + res.data.candidates.map(c =>
+                `<button class="btn-pick" onclick="pickDone(this); retryTransfer('${esc(c.name)}', '${esc(retry.amount)}')">${esc(c.name)}（${esc(c.phone)}，${esc(c.note)}）</button>`).join('') + '</div>';
+        }
+        addBot(`<span class="badge badge-red">无法继续</span><br>${esc(res.error)}${extra}`);
+    }
+
+    /* ----------------------------- smart transfer ----------------------------- */
+    async function transferIntent(text) {
+        const { recipient, amount } = parseTransfer(text);
+        if (!recipient || !amount) return addBot('请告诉我收款人和金额，例如：“给李明转 200 块”。');
+        return doTransfer(recipient, amount);
+    }
+    async function doTransfer(recipient, amount) {
+        const res = await api('POST', '/api/transfer/request', { recipient, amount });
+        if (res.status === 'success') showPending(res); else showFailure(res, { amount });
+    }
+    function retryTransfer(name, amount) { addUser(`${name}，${amount} 元`); return doTransfer(name, amount); }
+
+    async function splitIntent(text) {
+        const total = firstNumber(text);
+        if (!total) return addBot('请告诉我总金额和朋友，例如：“AA 100 李明 王芳”。');
+        const rest = text.replace(/AA|均摊|平分|分摊|\d+(?:\.\d+)?|块钱|块|元|总共|一共|我和|和我|我/gi, ' ');
+        const names = rest.split(/[\s、,，和跟与]+/).map(s => s.trim()).filter(s => /^[一-龥]{2,4}$/.test(s));
+        if (!names.length) return addBot('请告诉我有哪些朋友一起分摊，例如：“AA 100 李明 王芳”。');
+        const res = await api('POST', '/api/transfer/split', { total, participants: names });
+        if (res.status !== 'success') return addBot(`<span class="badge badge-red">无法计算</span><br>${esc(res.error)}`);
+        const sh = res.data.shares;
+        addBot(`<span class="badge badge-green">绿色通道 · 仅计算，不扣款</span><br>总额 ¥${esc(res.data.total)} 平均分摊：
+            <div class="card"><table class="shares">${Object.keys(sh).map(k => `<tr><td>${esc(k)}</td><td>¥${sh[k].toFixed(2)}</td></tr>`).join('')}</table>
+            ${res.data.unresolved.length ? `<div class="small">通讯录里找不到：${res.data.unresolved.map(u => esc(u.name)).join('、')}</div>` : ''}</div>`);
+    }
+
+    /* ----------------------------- card management ----------------------------- */
+    let currentCardIntent = null;
+
+    async function cardIntent(intent, text, filter) {
+        const r = await api('GET', '/api/cards');
+        const cards = r.data.cards.filter(filter);
+        if (!cards.length) return addBot(intent.type === 'unfreeze' ? '您没有已挂失的卡。' : '没有符合条件的卡片。');
+        const byId = text.match(/C\d{3}/i);
+        const byLast4 = text.match(/尾号\s*(\d{4})/);
+        let chosen = null;
+        if (byId) chosen = cards.find(c => c.card_id === byId[0].toUpperCase());
+        else if (byLast4) chosen = cards.find(c => c.last4 === byLast4[1]);
+        else if (cards.length === 1) chosen = cards[0];
+        currentCardIntent = intent;
+        if (chosen) return runCardIntent(chosen.card_id);
+        addBot('请问是哪一张卡？<div class="btn-row">' + cards.map(c =>
+            `<button class="btn-pick" onclick="pickDone(this); runCardIntent('${esc(c.card_id)}')">${esc(c.card_id)} 尾号 ${esc(c.last4)}</button>`).join('') + '</div>');
+    }
+
+    async function runCardIntent(cardId) {
+        const i = currentCardIntent;
+        if (!i) return;
+        let res;
+        if (i.type === 'lost') res = await api('POST', '/api/cards/lost', { card_id: cardId });
+        else if (i.type === 'unfreeze') res = await api('POST', '/api/cards/unfreeze', { card_id: cardId });
+        else if (i.type === 'limit') res = await api('POST', '/api/cards/limit', { card_id: cardId, new_limit: i.new_limit });
+        else if (i.type === 'restriction') res = await api('POST', '/api/cards/restriction', { card_id: cardId, restriction: i.restriction, enabled: i.enabled });
+        if (res.status === 'success') showPending(res); else showFailure(res, { amount: '' });
+    }
+
+    async function createCard(type) {
+        const res = await api('POST', '/api/cards/apply', { card_type: type });
+        if (res.status === 'success') showPending(res); else showFailure(res, { amount: '' });
     }
 </script>
 </body>

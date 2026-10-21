@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>智能转账 & 卡片管理 · 测试面板</title>
+<style>
+  :root { --blue:#2f6fe4; --bg:#f1f3f8; --card:#fff; --text:#1d2433; --muted:#667085;
+          --green:#12805c; --red:#c0392b; --amber:#b7791f; --line:#e4e7ec; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:-apple-system,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+         background:var(--bg); color:var(--text); font-size:14px; }
+  header { background:var(--blue); color:#fff; padding:14px 24px; display:flex;
+           justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+  header h1 { margin:0; font-size:18px; }
+  header .bal { font-size:15px; }
+  main { max-width:1100px; margin:16px auto; padding:0 16px; display:grid;
+         grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:800px) { main { grid-template-columns:1fr; } }
+  section { background:var(--card); border-radius:10px; padding:16px; border:1px solid var(--line); }
+  section.wide { grid-column:1 / -1; }
+  h2 { margin:0 0 10px; font-size:15px; }
+  h2 small { color:var(--muted); font-weight:normal; margin-left:6px; }
+  label { display:block; margin:8px 0 3px; color:var(--muted); font-size:12px; }
+  input, select { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:6px; font-size:14px; }
+  .row { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; align-items:center; }
+  .row input { flex:1; min-width:90px; }
+  button { background:var(--blue); color:#fff; border:0; border-radius:6px; padding:8px 14px;
+           cursor:pointer; font-size:13px; }
+  button:hover { filter:brightness(1.08); }
+  button.ghost { background:#eef1f7; color:var(--text); }
+  button.on { background:#fde8e6; color:var(--red); }
+  button.danger { background:var(--red); }
+  .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:12px; color:#fff; }
+  .badge.green { background:var(--green); } .badge.red { background:var(--red); }
+  .badge.amber { background:var(--amber); } .badge.gray { background:#98a2b3; }
+  .muted { color:var(--muted); }
+  #toast { max-width:1100px; margin:12px auto 0; padding:0 16px; }
+  #toast div { padding:10px 14px; border-radius:8px; }
+  #toast .ok { background:#e3f6ee; color:var(--green); }
+  #toast .err { background:#fdecea; color:var(--red); }
+  #toast .info { background:#e8f0fe; color:#1c4fb3; }
+  .pend, .cardbox { border:1px solid var(--line); border-radius:8px; padding:10px; margin-top:8px; }
+  .pend input { margin-top:8px; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  td, th { text-align:left; padding:5px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  .cand { cursor:pointer; color:var(--blue); text-decoration:underline; margin-right:10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>智能转账 & 卡片管理 · 测试面板</h1>
+  <div class="bal"><a href="/" style="color:#dbe8ff;margin-right:16px">← 返回聊天</a>账户余额：<b id="balance">…</b> 元</div>
+</header>
+<div id="toast"></div>
+
+<main>
+  <!-- ============ LEFT: Smart transfer ============ -->
+  <section>
+    <h2>智能转账 <small>Smart Transfer</small></h2>
+    <label>收款人（姓名 / 手机号 / 备注，例：李明、13700003333、室友）</label>
+    <input id="t-rcpt" placeholder="李明">
+    <div class="row">
+      <input id="t-amount" type="number" step="0.01" placeholder="金额（元）">
+      <input id="t-note" placeholder="备注（可选）">
+    </div>
+    <div class="row">
+      <button onclick="reqTransfer()">发起转账</button>
+      <button class="ghost" onclick="searchContact()">查找联系人</button>
+    </div>
+    <div id="cands" class="muted" style="margin-top:8px"></div>
+    <p class="muted" style="margin:10px 0 0">规则：当天累计 ≤ ¥1000 需确认；超过 ¥1000 需验证码（演示验证码 123456）。</p>
+  </section>
+
+  <!-- ============ RIGHT: Pending ============ -->
+  <section>
+    <h2>待确认的操作 <small>Pending</small></h2>
+    <div id="pending"></div>
+  </section>
+
+  <section>
+    <h2>定时转账 <small>Scheduled</small></h2>
+    <div class="row">
+      <input id="s-rcpt" placeholder="收款人">
+      <input id="s-amount" type="number" step="0.01" placeholder="金额">
+    </div>
+    <div class="row">
+      <input id="s-when" type="datetime-local">
+      <select id="s-repeat" style="flex:1">
+        <option value="">不重复</option><option value="daily">每天</option>
+        <option value="weekly">每周</option><option value="monthly">每月</option>
+      </select>
+    </div>
+    <div class="row"><button onclick="reqSchedule()">创建定时转账</button></div>
+    <div id="scheduled" class="muted" style="margin-top:8px"></div>
+  </section>
+
+  <section>
+    <h2>AA 收款 <small>Split bill</small></h2>
+    <div class="row">
+      <input id="aa-total" type="number" step="0.01" placeholder="总金额">
+      <input id="aa-people" placeholder="朋友（用逗号隔开）例：李明,王芳">
+    </div>
+    <div class="row"><button onclick="splitBill()">计算 AA</button></div>
+    <div id="aa-result" style="margin-top:8px"></div>
+  </section>
+
+  <!-- ============ Cards ============ -->
+  <section class="wide">
+    <h2>卡片管理 <small>Card Management</small></h2>
+    <div id="cards"></div>
+    <div class="row">
+      <button onclick="applyCard('virtual')">申请虚拟卡</button>
+      <button class="ghost" onclick="applyCard('physical')">申请实体卡</button>
+    </div>
+    <p class="muted" style="margin:10px 0 0">降低额度 / 增加限制：需确认。提高额度 / 解除限制 / 挂失 / 解挂：需验证码。</p>
+  </section>
+
+  <!-- ============ Audit ============ -->
+  <section class="wide">
+    <h2>操作日志 <small>Audit log</small>
+      <button class="ghost" style="float:right" onclick="resetLock()">重置安全锁定（演示）</button></h2>
+    <div id="audit"></div>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const RNAME = {online:'网上支付', overseas:'境外交易', atm:'ATM 取现'};
+const STATUS = {active:['正常','green'], frozen:['已挂失','red'], pending_delivery:['待寄送','amber']};
+
+async function api(method, url, body) {
+  try {
+    const r = await fetch(url, {method, headers:{'Content-Type':'application/json'},
+                                body: body === undefined ? undefined : JSON.stringify(body)});
+    return await r.json();
+  } catch (e) {
+    return {status:'failed', data:{}, txn_id:null, error:'无法连接服务器：' + e};
+  }
+}
+
+function toast(kind, html) { $('#toast').innerHTML = `<div class="${kind}">${html}</div>`; }
+
+// Show the outcome of any API call
+function show(res, okText) {
+  if (res.status === 'success') {
+    if (res.data && res.data.pending_id) {
+      toast('info', '已创建待确认操作，请在右上角「待确认的操作」里确认：<br>' + esc(res.data.summary));
+    } else {
+      let extra = '';
+      if (res.txn_id) extra += '　交易号：' + esc(res.txn_id);
+      if (res.data && res.data.new_balance !== undefined) extra += '　余额：¥' + esc(res.data.new_balance);
+      toast('ok', '✅ ' + esc(okText || '成功') + extra);
+    }
+  } else {
+    let extra = '';
+    if (res.data && res.data.remaining_attempts !== undefined) extra = '（还可尝试 ' + res.data.remaining_attempts + ' 次）';
+    toast('err', '❌ ' + esc(res.error) + extra);
+  }
+}
+
+// ---------------- loaders ----------------
+async function refresh() {
+  const [bal, pend, cards, audit, sched] = await Promise.all([
+    api('GET', '/api/balance'), api('GET', '/api/pending'), api('GET', '/api/cards'),
+    api('GET', '/api/audit'), api('GET', '/api/transfer/scheduled')]);
+  $('#balance').textContent = bal.data ? Number(bal.data.balance).toFixed(2) : '?';
+  renderPending(pend.data.pending || []);
+  renderCards(cards.data.cards || []);
+  renderAudit(audit.data.entries || []);
+  renderScheduled(sched.data.scheduled || []);
+}
+
+function renderPending(items) {
+  if (!items.length) { $('#pending').innerHTML = '<p class="muted">暂时没有待确认的操作</p>'; return; }
+  $('#pending').innerHTML = items.map(p => {
+    const strong = p.level === 'strong';
+    return `<div class="pend">
+      <span class="badge ${strong ? 'red' : 'amber'}">${strong ? '需验证码' : '需确认'}</span> ${esc(p.summary)}
+      ${strong ? `<input id="code-${esc(p.pending_id)}" placeholder="验证码（演示：123456）">` : ''}
+      <div class="row">
+        <button onclick="doConfirm('${esc(p.pending_id)}', ${strong})">确认</button>
+        <button class="ghost" onclick="doCancel('${esc(p.pending_id)}')">取消</button>
+      </div></div>`;
+  }).join('');
+}
+
+function renderCards(cards) {
+  $('#cards').innerHTML = cards.map(c => {
+    const [stText, stColor] = STATUS[c.status] || [c.status, 'gray'];
+    const type = c.type === 'virtual' ? '虚拟卡' : c.type === 'physical' ? '实体卡' : '借记卡';
+    const restr = ['online', 'overseas', 'atm'].map(r =>
+      `<button class="${c.restrictions[r] ? 'on' : 'ghost'}"
+        onclick="toggleRestriction('${esc(c.card_id)}','${r}',${!c.restrictions[r]})">
+        ${RNAME[r]}：${c.restrictions[r] ? '已限制' : '未限制'}</button>`).join('');
+    return `<div class="cardbox">
+      <div><b>${esc(c.card_id)}</b>　尾号 ${esc(c.last4)} · ${type}
+        <span class="badge ${stColor}">${stText}</span>　每日额度：<b>¥${esc(c.daily_limit)}</b></div>
+      <div class="row">
+        <input id="lim-${esc(c.card_id)}" type="number" placeholder="新的每日额度">
+        <button onclick="setLimit('${esc(c.card_id)}')">修改额度</button>
+      </div>
+      <div class="row">${restr}</div>
+      <div class="row">
+        ${c.status === 'active' ? `<button class="danger" onclick="lostCard('${esc(c.card_id)}')">挂失</button>` : ''}
+        ${c.status === 'frozen' ? `<button onclick="unfreezeCard('${esc(c.card_id)}')">解挂</button>` : ''}
+      </div></div>`;
+  }).join('') || '<p class="muted">没有卡片</p>';
+}
+
+function renderAudit(entries) {
+  const rows = entries.slice(-12).reverse().map(e =>
+    `<tr><td>${esc(e.time.replace('T', ' '))}</td><td>${esc(e.action)}</td><td>${esc(e.result)}</td></tr>`).join('');
+  $('#audit').innerHTML = rows
+    ? `<table><tr><th>时间</th><th>操作</th><th>结果</th></tr>${rows}</table>`
+    : '<p class="muted">还没有记录</p>';
+}
+
+function renderScheduled(list) {
+  $('#scheduled').innerHTML = list.length
+    ? list.map(s => `${esc(s.schedule_id)}：${esc(s.recipient)} ¥${esc(s.amount)}，下次 ${esc(s.next_run.replace('T', ' '))}${s.repeat ? '（' + esc(s.repeat) + '）' : ''}`).join('<br>')
+    : '还没有定时转账';
+}
+
+// ---------------- actions ----------------
+async function reqTransfer() {
+  const res = await api('POST', '/api/transfer/request',
+    {recipient: $('#t-rcpt').value, amount: $('#t-amount').value, note: $('#t-note').value});
+  $('#cands').innerHTML = '';
+  if (res.status === 'failed' && res.data && res.data.candidates) {
+    $('#cands').innerHTML = '请选择：' + res.data.candidates.map(c =>
+      `<span class="cand" onclick="$('#t-rcpt').value='${esc(c.name)}'">${esc(c.name)}（${esc(c.phone)}，${esc(c.note)}）</span>`).join('');
+  }
+  show(res); refresh();
+}
+
+async function searchContact() {
+  const res = await api('GET', '/api/contacts/search?q=' + encodeURIComponent($('#t-rcpt').value));
+  if (res.status === 'success') {
+    const c = res.data.contact;
+    toast('ok', `✅ 找到：${esc(c.name)}（${esc(c.phone)}，${esc(c.note)}）`);
+    $('#cands').innerHTML = '';
+  } else {
+    $('#cands').innerHTML = (res.data && res.data.candidates) ? '请选择：' + res.data.candidates.map(c =>
+      `<span class="cand" onclick="$('#t-rcpt').value='${esc(c.name)}'">${esc(c.name)}（${esc(c.phone)}，${esc(c.note)}）</span>`).join('') : '';
+    show(res);
+  }
+}
+
+async function reqSchedule() {
+  const when = $('#s-when').value.replace('T', ' ');
+  show(await api('POST', '/api/transfer/schedule', {recipient: $('#s-rcpt').value,
+        amount: $('#s-amount').value, run_at: when, repeat: $('#s-repeat').value || null}));
+  refresh();
+}
+
+async function splitBill() {
+  const people = $('#aa-people').value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+  const res = await api('POST', '/api/transfer/split', {total: $('#aa-total').value, participants: people});
+  if (res.status === 'success') {
+    const sh = res.data.shares;
+    $('#aa-result').innerHTML = '<table>' + Object.keys(sh).map(k => `<tr><td>${esc(k)}</td><td>¥${sh[k].toFixed(2)}</td></tr>`).join('') + '</table>'
+      + (res.data.unresolved.length ? '<p class="muted">通讯录里找不到：' + res.data.unresolved.map(u => esc(u.name)).join('、') + '</p>' : '');
+    toast('ok', '✅ 已计算 AA 金额（不会扣款）');
+  } else { $('#aa-result').innerHTML = ''; show(res); }
+  refresh();
+}
+
+async function doConfirm(id, strong) {
+  const code = strong ? ($('#code-' + id).value || '') : undefined;
+  show(await api('POST', '/api/confirm', {pending_id: id, code}), '操作已完成');
+  refresh();
+}
+async function doCancel(id) { show(await api('POST', '/api/cancel', {pending_id: id}), '已取消'); refresh(); }
+
+async function applyCard(t) { show(await api('POST', '/api/cards/apply', {card_type: t})); refresh(); }
+async function setLimit(id) { show(await api('POST', '/api/cards/limit', {card_id: id, new_limit: $('#lim-' + id).value})); refresh(); }
+async function toggleRestriction(id, r, on) { show(await api('POST', '/api/cards/restriction', {card_id: id, restriction: r, enabled: on})); refresh(); }
+async function lostCard(id) { show(await api('POST', '/api/cards/lost', {card_id: id})); refresh(); }
+async function unfreezeCard(id) { show(await api('POST', '/api/cards/unfreeze', {card_id: id})); refresh(); }
+async function resetLock() { show(await api('POST', '/api/security/reset-lock', {}), '已解除安全锁定'); refresh(); }
+
+refresh();
+</script>
+</body>
+</html>
