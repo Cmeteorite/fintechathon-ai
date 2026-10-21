@@ -1,7 +1,9 @@
 from flask import Flask, render_template, request, jsonify
+from core.routes_angel import bp as angel_bp
 from core.tools import get_balance, get_transactions, execute_transfer
 
 app = Flask(__name__)
+app.register_blueprint(angel_bp)
 
 @app.route('/')
 def home():
