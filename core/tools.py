@@ -33,3 +33,67 @@ def execute_transfer(amount, recipient="Unknown"):
         "txn_id": f"TXN-{datetime.datetime.now().strftime('%H%M%S')}", 
         "error": None
     }
+
+
+def find_recipient(query):
+    from core import transfer
+    return transfer.find_recipient(query)
+
+
+def request_transfer(recipient, amount, note=""):
+    from core import transfer
+    return transfer.request_transfer(recipient, amount, note)
+
+
+def schedule_transfer(recipient, amount, run_at, repeat=None):
+    from core import transfer
+    return transfer.schedule_transfer(recipient, amount, run_at, repeat)
+
+
+def split_bill(total, participants, include_self=True):
+    from core import transfer
+    return transfer.split_bill(total, participants, include_self)
+
+
+def list_cards():
+    from core import cards
+    return cards.list_cards()
+
+
+def apply_card(card_type="virtual"):
+    from core import cards
+    return cards.apply_card(card_type)
+
+
+def adjust_card_limit(card_id, new_limit):
+    from core import cards
+    return cards.adjust_limit(card_id, new_limit)
+
+
+def set_card_restriction(card_id, restriction, enabled):
+    from core import cards
+    return cards.set_restriction(card_id, restriction, enabled)
+
+
+def report_card_lost(card_id):
+    from core import cards
+    return cards.report_lost(card_id)
+
+
+def unfreeze_card(card_id):
+    from core import cards
+    return cards.unfreeze_card(card_id)
+
+
+AGENT_TOOLS = {
+    "find_recipient": find_recipient,
+    "request_transfer": request_transfer,
+    "schedule_transfer": schedule_transfer,
+    "split_bill": split_bill,
+    "list_cards": list_cards,
+    "apply_card": apply_card,
+    "adjust_card_limit": adjust_card_limit,
+    "set_card_restriction": set_card_restriction,
+    "report_card_lost": report_card_lost,
+    "unfreeze_card": unfreeze_card,
+}
